@@ -1,4 +1,3 @@
-
 import sys
 import sqlite3
 
@@ -36,6 +35,7 @@ class ShopManagement(QMainWindow):
         # Sidebar
         sidebar = QFrame()
         sidebar.setFixedWidth(220)
+
         sidebar.setStyleSheet("""
             QFrame {
                 background-color: #2c3e50;
@@ -61,16 +61,18 @@ class ShopManagement(QMainWindow):
         title.setStyleSheet(
             "color: white; font-size: 20px; font-weight: bold; padding: 20px;"
         )
+
         sidebar_layout.addWidget(title)
 
         dashboard_button = QPushButton("📊 Dashboard")
         products_button = QPushButton("📦 Products")
         sales_button = QPushButton("🛒 Sales")
+        customers_button = QPushButton("👥 Customers")
 
         sidebar_layout.addWidget(dashboard_button)
         sidebar_layout.addWidget(products_button)
         sidebar_layout.addWidget(sales_button)
-        sidebar_layout.addWidget(QPushButton("👥 Customers"))
+        sidebar_layout.addWidget(customers_button)
         sidebar_layout.addWidget(QPushButton("📈 Reports"))
         sidebar_layout.addWidget(QPushButton("⚙️ Settings"))
 
@@ -81,11 +83,13 @@ class ShopManagement(QMainWindow):
         # Main content
         self.content = QWidget()
         self.content_layout = QVBoxLayout(self.content)
+
         main_layout.addWidget(self.content)
 
         dashboard_button.clicked.connect(self.show_dashboard)
         products_button.clicked.connect(self.show_products)
         sales_button.clicked.connect(self.show_sales)
+        customers_button.clicked.connect(self.show_customers)
 
         self.show_dashboard()
 
@@ -113,6 +117,15 @@ class ShopManagement(QMainWindow):
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS customers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                phone TEXT,
+                amount_due REAL NOT NULL DEFAULT 0
+            )
+        """)
+
         connection.commit()
         connection.close()
 
@@ -131,8 +144,13 @@ class ShopManagement(QMainWindow):
             "font-size: 30px; font-weight: bold; padding: 15px;"
         )
 
-        welcome = QLabel("Welcome to your Shop Management System!")
-        welcome.setStyleSheet("font-size: 18px; padding: 10px;")
+        welcome = QLabel(
+            "Welcome to your Shop Management System!"
+        )
+
+        welcome.setStyleSheet(
+            "font-size: 18px; padding: 10px;"
+        )
 
         self.content_layout.addWidget(heading)
         self.content_layout.addWidget(welcome)
@@ -148,6 +166,7 @@ class ShopManagement(QMainWindow):
 
         for name, value in stats:
             card = QFrame()
+
             card.setStyleSheet("""
                 QFrame {
                     background-color: #ecf0f1;
@@ -228,9 +247,18 @@ class ShopManagement(QMainWindow):
         name = self.name_input.text().strip()
 
         try:
-            purchase_price = float(self.purchase_input.text())
-            sale_price = float(self.sale_input.text())
-            stock = int(self.stock_input.text())
+            purchase_price = float(
+                self.purchase_input.text()
+            )
+
+            sale_price = float(
+                self.sale_input.text()
+            )
+
+            stock = int(
+                self.stock_input.text()
+            )
+
         except ValueError:
             QMessageBox.warning(
                 self,
@@ -254,7 +282,12 @@ class ShopManagement(QMainWindow):
             INSERT INTO products
             (name, purchase_price, sale_price, stock)
             VALUES (?, ?, ?, ?)
-        """, (name, purchase_price, sale_price, stock))
+        """, (
+            name,
+            purchase_price,
+            sale_price,
+            stock
+        ))
 
         connection.commit()
         connection.close()
@@ -283,6 +316,7 @@ class ShopManagement(QMainWindow):
         """)
 
         products = cursor.fetchall()
+
         connection.close()
 
         self.table.setRowCount(len(products))
@@ -350,6 +384,7 @@ class ShopManagement(QMainWindow):
         """)
 
         products = cursor.fetchall()
+
         connection.close()
 
         for product_id, name, price, stock in products:
@@ -370,7 +405,10 @@ class ShopManagement(QMainWindow):
             return
 
         try:
-            quantity = int(self.quantity_input.text())
+            quantity = int(
+                self.quantity_input.text()
+            )
+
         except ValueError:
             QMessageBox.warning(
                 self,
@@ -412,6 +450,7 @@ class ShopManagement(QMainWindow):
                 "Not Enough Stock",
                 f"Only {stock} items are available."
             )
+
             return
 
         total = sale_price * quantity
@@ -420,13 +459,20 @@ class ShopManagement(QMainWindow):
             INSERT INTO sales
             (product_id, quantity, total)
             VALUES (?, ?, ?)
-        """, (product_id, quantity, total))
+        """, (
+            product_id,
+            quantity,
+            total
+        ))
 
         cursor.execute("""
             UPDATE products
             SET stock = stock - ?
             WHERE id = ?
-        """, (quantity, product_id))
+        """, (
+            quantity,
+            product_id
+        ))
 
         connection.commit()
         connection.close()
@@ -439,7 +485,8 @@ class ShopManagement(QMainWindow):
         QMessageBox.information(
             self,
             "Sale Complete",
-            f"Sale recorded successfully!\n\nTotal: Rs. {total:.2f}"
+            f"Sale recorded successfully!\n\n"
+            f"Total: Rs. {total:.2f}"
         )
 
     def load_sales(self):
@@ -447,13 +494,19 @@ class ShopManagement(QMainWindow):
         cursor = connection.cursor()
 
         cursor.execute("""
-            SELECT sales.id, products.name, sales.quantity, sales.total
+            SELECT
+                sales.id,
+                products.name,
+                sales.quantity,
+                sales.total
             FROM sales
-            JOIN products ON sales.product_id = products.id
+            JOIN products
+            ON sales.product_id = products.id
             ORDER BY sales.id DESC
         """)
 
         sales = cursor.fetchall()
+
         connection.close()
 
         self.sales_table.setRowCount(len(sales))
@@ -466,11 +519,154 @@ class ShopManagement(QMainWindow):
                     QTableWidgetItem(str(value))
                 )
 
+    def show_customers(self):
+        self.clear_content()
+
+        heading = QLabel("Customers")
+        heading.setStyleSheet(
+            "font-size: 30px; font-weight: bold; padding: 10px;"
+        )
+
+        self.content_layout.addWidget(heading)
+
+        form = QHBoxLayout()
+
+        self.customer_name_input = QLineEdit()
+        self.customer_name_input.setPlaceholderText(
+            "Customer name"
+        )
+
+        self.customer_phone_input = QLineEdit()
+        self.customer_phone_input.setPlaceholderText(
+            "Phone number"
+        )
+
+        self.customer_due_input = QLineEdit()
+        self.customer_due_input.setPlaceholderText(
+            "Amount due"
+        )
+
+        add_customer_button = QPushButton(
+            "Add Customer"
+        )
+
+        add_customer_button.clicked.connect(
+            self.add_customer
+        )
+
+        form.addWidget(self.customer_name_input)
+        form.addWidget(self.customer_phone_input)
+        form.addWidget(self.customer_due_input)
+        form.addWidget(add_customer_button)
+
+        self.content_layout.addLayout(form)
+
+        self.customer_table = QTableWidget()
+        self.customer_table.setColumnCount(4)
+
+        self.customer_table.setHorizontalHeaderLabels([
+            "ID",
+            "Customer Name",
+            "Phone",
+            "Amount Due"
+        ])
+
+        self.content_layout.addWidget(
+            self.customer_table
+        )
+
+        self.load_customers()
+
+    def add_customer(self):
+        name = self.customer_name_input.text().strip()
+        phone = self.customer_phone_input.text().strip()
+
+        due_text = self.customer_due_input.text().strip()
+
+        if not name:
+            QMessageBox.warning(
+                self,
+                "Missing Name",
+                "Please enter the customer name."
+            )
+            return
+
+        if due_text == "":
+            due = 0
+        else:
+            try:
+                due = float(due_text)
+
+            except ValueError:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Amount",
+                    "Please enter a valid amount due."
+                )
+                return
+
+        connection = sqlite3.connect("shop.db")
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            INSERT INTO customers
+            (name, phone, amount_due)
+            VALUES (?, ?, ?)
+        """, (
+            name,
+            phone,
+            due
+        ))
+
+        connection.commit()
+        connection.close()
+
+        self.customer_name_input.clear()
+        self.customer_phone_input.clear()
+        self.customer_due_input.clear()
+
+        self.load_customers()
+
+        QMessageBox.information(
+            self,
+            "Success",
+            "Customer added successfully!"
+        )
+
+    def load_customers(self):
+        connection = sqlite3.connect("shop.db")
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT id, name, phone, amount_due
+            FROM customers
+            ORDER BY id DESC
+        """)
+
+        customers = cursor.fetchall()
+
+        connection.close()
+
+        self.customer_table.setRowCount(
+            len(customers)
+        )
+
+        for row, customer in enumerate(customers):
+            for column, value in enumerate(customer):
+                self.customer_table.setItem(
+                    row,
+                    column,
+                    QTableWidgetItem(str(value))
+                )
+
     def get_product_count(self):
         connection = sqlite3.connect("shop.db")
         cursor = connection.cursor()
 
-        cursor.execute("SELECT COUNT(*) FROM products")
+        cursor.execute(
+            "SELECT COUNT(*) FROM products"
+        )
+
         count = cursor.fetchone()[0]
 
         connection.close()
