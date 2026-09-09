@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QTableWidget,
     QTableWidgetItem,
+    QComboBox,
 )
 
 
@@ -64,11 +65,11 @@ class ShopManagement(QMainWindow):
 
         dashboard_button = QPushButton("📊 Dashboard")
         products_button = QPushButton("📦 Products")
+        sales_button = QPushButton("🛒 Sales")
 
         sidebar_layout.addWidget(dashboard_button)
         sidebar_layout.addWidget(products_button)
-
-        sidebar_layout.addWidget(QPushButton("🛒 Sales"))
+        sidebar_layout.addWidget(sales_button)
         sidebar_layout.addWidget(QPushButton("👥 Customers"))
         sidebar_layout.addWidget(QPushButton("📈 Reports"))
         sidebar_layout.addWidget(QPushButton("⚙️ Settings"))
@@ -77,14 +78,14 @@ class ShopManagement(QMainWindow):
 
         main_layout.addWidget(sidebar)
 
-        # Main area
+        # Main content
         self.content = QWidget()
         self.content_layout = QVBoxLayout(self.content)
-
         main_layout.addWidget(self.content)
 
         dashboard_button.clicked.connect(self.show_dashboard)
         products_button.clicked.connect(self.show_products)
+        sales_button.clicked.connect(self.show_sales)
 
         self.show_dashboard()
 
@@ -99,6 +100,16 @@ class ShopManagement(QMainWindow):
                 purchase_price REAL NOT NULL,
                 sale_price REAL NOT NULL,
                 stock INTEGER NOT NULL
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sales (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER NOT NULL,
+                quantity INTEGER NOT NULL,
+                total REAL NOT NULL,
+                FOREIGN KEY (product_id) REFERENCES products(id)
             )
         """)
 
@@ -173,7 +184,6 @@ class ShopManagement(QMainWindow):
 
         self.content_layout.addWidget(heading)
 
-        # Product input fields
         form = QHBoxLayout()
 
         self.name_input = QLineEdit()
@@ -199,10 +209,9 @@ class ShopManagement(QMainWindow):
 
         self.content_layout.addLayout(form)
 
-        # Products table
         self.table = QTableWidget()
-
         self.table.setColumnCount(5)
+
         self.table.setHorizontalHeaderLabels([
             "ID",
             "Product Name",
@@ -274,7 +283,6 @@ class ShopManagement(QMainWindow):
         """)
 
         products = cursor.fetchall()
-
         connection.close()
 
         self.table.setRowCount(len(products))
@@ -282,6 +290,177 @@ class ShopManagement(QMainWindow):
         for row, product in enumerate(products):
             for column, value in enumerate(product):
                 self.table.setItem(
+                    row,
+                    column,
+                    QTableWidgetItem(str(value))
+                )
+
+    def show_sales(self):
+        self.clear_content()
+
+        heading = QLabel("Sales")
+        heading.setStyleSheet(
+            "font-size: 30px; font-weight: bold; padding: 10px;"
+        )
+
+        self.content_layout.addWidget(heading)
+
+        form = QHBoxLayout()
+
+        self.product_combo = QComboBox()
+        self.load_sale_products()
+
+        self.quantity_input = QLineEdit()
+        self.quantity_input.setPlaceholderText("Quantity")
+
+        sell_button = QPushButton("Sell Product")
+        sell_button.clicked.connect(self.make_sale)
+
+        form.addWidget(self.product_combo)
+        form.addWidget(self.quantity_input)
+        form.addWidget(sell_button)
+
+        self.content_layout.addLayout(form)
+
+        self.sales_table = QTableWidget()
+        self.sales_table.setColumnCount(4)
+
+        self.sales_table.setHorizontalHeaderLabels([
+            "Sale ID",
+            "Product",
+            "Quantity",
+            "Total"
+        ])
+
+        self.content_layout.addWidget(self.sales_table)
+
+        self.load_sales()
+
+    def load_sale_products(self):
+        self.product_combo.clear()
+
+        connection = sqlite3.connect("shop.db")
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT id, name, sale_price, stock
+            FROM products
+            WHERE stock > 0
+            ORDER BY name
+        """)
+
+        products = cursor.fetchall()
+        connection.close()
+
+        for product_id, name, price, stock in products:
+            self.product_combo.addItem(
+                f"{name} - Rs. {price} - Stock: {stock}",
+                product_id
+            )
+
+    def make_sale(self):
+        product_id = self.product_combo.currentData()
+
+        if product_id is None:
+            QMessageBox.warning(
+                self,
+                "No Product",
+                "Please add a product with stock first."
+            )
+            return
+
+        try:
+            quantity = int(self.quantity_input.text())
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Invalid Quantity",
+                "Please enter a valid quantity."
+            )
+            return
+
+        if quantity <= 0:
+            QMessageBox.warning(
+                self,
+                "Invalid Quantity",
+                "Quantity must be greater than zero."
+            )
+            return
+
+        connection = sqlite3.connect("shop.db")
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT sale_price, stock
+            FROM products
+            WHERE id = ?
+        """, (product_id,))
+
+        product = cursor.fetchone()
+
+        if product is None:
+            connection.close()
+            return
+
+        sale_price, stock = product
+
+        if quantity > stock:
+            connection.close()
+
+            QMessageBox.warning(
+                self,
+                "Not Enough Stock",
+                f"Only {stock} items are available."
+            )
+            return
+
+        total = sale_price * quantity
+
+        cursor.execute("""
+            INSERT INTO sales
+            (product_id, quantity, total)
+            VALUES (?, ?, ?)
+        """, (product_id, quantity, total))
+
+        cursor.execute("""
+            UPDATE products
+            SET stock = stock - ?
+            WHERE id = ?
+        """, (quantity, product_id))
+
+        connection.commit()
+        connection.close()
+
+        self.quantity_input.clear()
+
+        self.load_sale_products()
+        self.load_sales()
+
+        QMessageBox.information(
+            self,
+            "Sale Complete",
+            f"Sale recorded successfully!\n\nTotal: Rs. {total:.2f}"
+        )
+
+    def load_sales(self):
+        connection = sqlite3.connect("shop.db")
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT sales.id, products.name, sales.quantity, sales.total
+            FROM sales
+            JOIN products ON sales.product_id = products.id
+            ORDER BY sales.id DESC
+        """)
+
+        sales = cursor.fetchall()
+        connection.close()
+
+        self.sales_table.setRowCount(len(sales))
+
+        for row, sale in enumerate(sales):
+            for column, value in enumerate(sale):
+                self.sales_table.setItem(
                     row,
                     column,
                     QTableWidgetItem(str(value))
